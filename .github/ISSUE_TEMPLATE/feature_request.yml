@@ -1,0 +1,59 @@
+name: Feature request
+description: Suggest an improvement or a new provider
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. **Do not attach real statements or personal data.**
+        Describe layouts with redacted notes and synthetic examples only.
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: What problem would this solve, and for whom?
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Provider or statement type
+      placeholder: e.g. a new Malaysian bank credit card statement
+    validations:
+      required: false
+  - type: dropdown
+    id: affects-extraction
+    attributes:
+      label: Does this affect normal extraction?
+      options:
+        - "No — docs/tooling/CI only"
+        - "Yes — changes parsing or extraction behavior"
+        - "Unsure"
+    validations:
+      required: true
+  - type: textarea
+    id: privacy-impact
+    attributes:
+      label: Privacy impact
+      description: Any impact on masking, local-only processing, or data handling.
+    validations:
+      required: true
+  - type: dropdown
+    id: synthetic-samples
+    attributes:
+      label: Can you provide synthetic samples?
+      options:
+        - "Yes — synthetic / redacted fixtures"
+        - "No"
+    validations:
+      required: true
+  - type: dropdown
+    id: online-or-llm
+    attributes:
+      label: Does this propose any online call or LLM fallback in the normal parser flow?
+      description: Normal extraction must remain local and deterministic. Online/LLM proposals for the normal flow will not be accepted.
+      options:
+        - "No"
+        - "Yes (note: not allowed in normal extraction)"
+    validations:
+      required: true

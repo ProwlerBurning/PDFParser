@@ -1,0 +1,78 @@
+name: Bug report
+description: Report a problem with local extraction or parsing
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. **Do not attach real statements or personal data.**
+        Use synthetic or fully redacted examples only.
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: e.g. macOS 14.5, Ubuntu 24.04
+    validations:
+      required: true
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      placeholder: e.g. 3.11.9
+    validations:
+      required: true
+  - type: input
+    id: tesseract-version
+    attributes:
+      label: Tesseract version
+      placeholder: "output of: tesseract --version (first line)"
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider type
+      options:
+        - Touch 'n Go eWallet
+        - Standard Chartered credit card
+        - Hong Leong Bank credit card
+        - Other / unsupported
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command used
+      description: The exact command you ran (with private paths redacted).
+      render: bash
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs
+      description: Paste relevant logs with all personal identifiers removed.
+      render: text
+    validations:
+      required: false
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Privacy confirmation
+      options:
+        - label: I have NOT attached any real statement, PDF, or Excel output.
+          required: true
+        - label: I have removed all private identifiers (names, account numbers, wallet IDs, card numbers, tokens).
+          required: true
