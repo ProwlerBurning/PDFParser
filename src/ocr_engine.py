@@ -5,7 +5,7 @@ import os
 import re
 import shutil
 import tempfile
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Callable
 
@@ -36,20 +36,69 @@ def _valid_sc_date(day: str, month: str) -> bool:
     return 1 <= int(day) <= 31 and month.upper() in _MONTHS
 
 
+# Acceptance thresholds for the invalid-date recovery consensus.
+_DATE_MIN_ANCHORED_READS = 8
+_DATE_MIN_DPI_SUPPORT = 3
+_DATE_MIN_PSM_SUPPORT = 2
+_DATE_MIN_WINNER_RATIO = 0.75
+
+
+def _consensus_transaction_date(
+    reads: list[tuple[int, int, str]],
+    posting: tuple[str, str],
+) -> tuple[int, str] | None:
+    """Pick a transaction date from a DPI x PSM matrix of date-cell reads.
+
+    Each read is ``(dpi, psm, text)``. A read counts only if it yields exactly
+    two valid dates and its posting date matches the row's existing valid
+    posting date (anchor). The winning transaction date must clear every gate:
+    enough anchored reads, a strong majority share, and support across multiple
+    DPIs and PSMs, with the runner-up not close. Returns ``(day, MONTH)`` or
+    ``None`` when the evidence is not deterministic.
+    """
+    anchored: list[tuple[int, int, tuple[int, str]]] = []
+    for dpi, psm, text in reads:
+        dates = [
+            (day, month)
+            for day, month in _DATE_TOKEN_RE.findall(text or "")
+            if _valid_sc_date(day, month)
+        ]
+        if len(dates) != 2:
+            continue
+        if int(dates[0][0]) != int(posting[0]) or dates[0][1].upper() != posting[1].upper():
+            continue
+        anchored.append((dpi, psm, (int(dates[1][0]), dates[1][1].upper())))
+
+    if len(anchored) < _DATE_MIN_ANCHORED_READS:
+        return None
+    tally = Counter(item[2] for item in anchored)
+    ranked = tally.most_common()
+    winner, winner_count = ranked[0]
+    runner_up_count = ranked[1][1] if len(ranked) > 1 else 0
+    if winner_count / len(anchored) < _DATE_MIN_WINNER_RATIO:
+        return None
+    if runner_up_count * 2 > winner_count:  # top two too close
+        return None
+    dpis = {item[0] for item in anchored if item[2] == winner}
+    psms = {item[1] for item in anchored if item[2] == winner}
+    if len(dpis) < _DATE_MIN_DPI_SUPPORT or len(psms) < _DATE_MIN_PSM_SUPPORT:
+        return None
+    return winner
+
+
 def recover_transaction_dates(
     pages: list[dict[str, Any]],
-    region_ocr: Callable[[int, tuple[int, int, int, int]], str],
+    date_region_ocr: Callable[[int, tuple[int, int, int, int]], list[tuple[int, int, str]]],
     pad: int = 8,
 ) -> int:
     """Re-OCR the left date cells for rows whose date is shape-valid but invalid.
 
     A row like ``11 Mar 41 Mar ...`` matches the DD-Mon shape but "41" is not a
-    real day. The two date cells (the first four words) are re-OCR'd via
-    ``region_ocr``; the new transaction date is accepted only when the crop
-    yields exactly two valid dates AND the recovered posting date matches the
-    row's existing (valid) posting date, so a misread cannot silently rewrite
-    the wrong row. Otherwise the row is left unchanged (the parser then flags it
-    as an invalid-date exception). Returns the number of rows recovered.
+    real day. The two date cells (the first four words) are re-OCR'd across a
+    DPI x PSM matrix via ``date_region_ocr``; the transaction date is rewritten
+    only on a clear, anchored, multi-setting consensus (see
+    :func:`_consensus_transaction_date`). Otherwise the row is left unchanged and
+    the parser flags it as an invalid-date exception. Returns rows recovered.
     """
     recovered = 0
     for page in pages:
@@ -76,30 +125,11 @@ def recover_transaction_dates(
                 description_left - pad,
                 line["bottom"] + pad,
             )
-            # Read the same cell at two scales; a smudged digit reads differently
-            # across scales, so we only trust a date both reads agree on.
-            reads = []
-            for scale in (3, 4):
-                crop = region_ocr(page["page_no"], box, scale) or ""
-                valid = [
-                    (day, month)
-                    for day, month in _DATE_TOKEN_RE.findall(crop)
-                    if _valid_sc_date(day, month)
-                ]
-                reads.append(valid)
-            if any(len(v) != 2 for v in reads):
+            winner = _consensus_transaction_date(date_region_ocr(page["page_no"], box), posting)
+            if winner is None:
                 continue
-            (p1, t1), (p2, t2) = reads[0], reads[1]
-            # both reads must agree on posting and transaction, and the recovered
-            # posting must match the row's existing valid posting date (anchor).
-            if (int(p1[0]), p1[1].upper(), int(t1[0]), t1[1].upper()) != (
-                int(p2[0]), p2[1].upper(), int(t2[0]), t2[1].upper()
-            ):
-                continue
-            if int(p1[0]) != int(posting[0]) or p1[1].upper() != posting[1].upper():
-                continue  # anchor mismatch -> do not trust the crop
             new_posting = f"{int(posting[0]):02d} {posting[1].title()}"
-            new_transaction = f"{int(t1[0]):02d} {t1[1].title()}"
+            new_transaction = f"{winner[0]:02d} {winner[1].title()}"
             line["text"] = _SC_DATE_PREFIX_SUB_RE.sub(
                 f"{new_posting} {new_transaction} ", text, count=1
             )
@@ -193,6 +223,54 @@ def build_amount_region_ocr(
             ).strip()
 
     return region_ocr
+
+
+DATE_RECOVERY_DPIS = (250, 300, 350, 400, 450)
+DATE_RECOVERY_PSMS = (6, 7, 11, 13)
+
+
+def build_date_region_ocr(
+    pdf_path: Path,
+    primary_dpi: int,
+) -> Callable[[int, tuple[int, int, int, int]], list[tuple[int, int, str]]]:
+    """Return a date-cell region OCR that reads across a DPI x PSM matrix.
+
+    The box is given in the primary OCR DPI's coordinate space; for each target
+    DPI the page is re-rendered and the box is scaled accordingly, then read at
+    each PSM. Returns ``[(dpi, psm, text), ...]`` for consensus scoring. Separate
+    from the amount region OCR so amount recovery behaviour is unchanged.
+    """
+    configure_tesseract()
+    rendered: dict[tuple[int, int], Image.Image] = {}
+
+    def date_region_ocr(
+        page_no: int, box: tuple[int, int, int, int]
+    ) -> list[tuple[int, int, str]]:
+        reads: list[tuple[int, int, str]] = []
+        for dpi in DATE_RECOVERY_DPIS:
+            image = rendered.get((page_no, dpi))
+            if image is None:
+                with fitz.open(pdf_path) as document:
+                    pixmap = document.load_page(page_no - 1).get_pixmap(
+                        dpi=dpi, alpha=False, colorspace=fitz.csRGB
+                    )
+                image = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
+                rendered[(page_no, dpi)] = image
+            scale = dpi / primary_dpi
+            scaled = tuple(int(round(coord * scale)) for coord in box)
+            crop = image.crop(scaled)
+            crop = crop.resize((crop.width * 3, crop.height * 3))
+            with tempfile.TemporaryDirectory() as work_dir:
+                crop_path = Path(work_dir) / "date_cell.png"
+                crop.save(crop_path)
+                for psm in DATE_RECOVERY_PSMS:
+                    text = pytesseract.image_to_string(
+                        str(crop_path), lang="eng", config=f"--oem 3 --psm {psm}", timeout=60
+                    ).strip()
+                    reads.append((dpi, psm, text))
+        return reads
+
+    return date_region_ocr
 
 
 class OcrUnavailableError(RuntimeError):

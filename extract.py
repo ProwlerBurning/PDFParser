@@ -11,6 +11,7 @@ from src.ocr_engine import (
     DEFAULT_OCR_DPI,
     OcrUnavailableError,
     build_amount_region_ocr,
+    build_date_region_ocr,
     ocr_pdf_pages,
     recover_amount_column,
     recover_transaction_dates,
@@ -138,9 +139,8 @@ def process_pdf(
             # Recover values the full-page pass dropped/garbled on wrapped rows by
             # re-OCRing just the affected cell. Both passes touch only deficient
             # rows; every other row is left exactly as the main pass produced.
-            region_ocr = build_amount_region_ocr(pdf_path, ocr_dpi)
-            recover_amount_column(ocr_pages, region_ocr)
-            recover_transaction_dates(ocr_pages, region_ocr)
+            recover_amount_column(ocr_pages, build_amount_region_ocr(pdf_path, ocr_dpi))
+            recover_transaction_dates(ocr_pages, build_date_region_ocr(pdf_path, ocr_dpi))
         extraction_text = _join_ocr_pages(ocr_pages)
     result = parser.parse_text(extraction_text, pdf_path.name)
     if statement_type == "sc":

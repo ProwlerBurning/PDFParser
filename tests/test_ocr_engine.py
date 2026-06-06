@@ -116,38 +116,57 @@ def _date_pages():
     ]
 
 
-def test_recover_transaction_dates_fixes_invalid_day_with_anchor():
+def _matrix(text_by_cell):
+    """Build a DPI x PSM matrix of (dpi, psm, text) reads from a dict or constant."""
+    dpis = (250, 300, 350, 400, 450)
+    psms = (6, 7, 11, 13)
+    reads = []
+    for dpi in dpis:
+        for psm in psms:
+            text = text_by_cell(dpi, psm) if callable(text_by_cell) else text_by_cell
+            reads.append((dpi, psm, text))
+    return reads
+
+
+def test_recover_transaction_dates_recovers_on_clear_multi_dpi_psm_consensus():
     pages = _date_pages()
-    # both scales agree on 11 Mar 11 Mar
-    recovered = ocr_engine.recover_transaction_dates(
-        pages, lambda page_no, box, scale=3: "11 Mar 11 Mar"
-    )
+    # 18 of 20 reads say 11 Mar (5 DPIs, 4 PSMs); 2 say 14 Mar -> clear winner
+    def cell(dpi, psm):
+        return "11 Mar 14 Mar" if (dpi == 350 and psm == 13) or (dpi == 400 and psm == 13) else "11 Mar 11 Mar"
+    recovered = ocr_engine.recover_transaction_dates(pages, lambda page_no, box: _matrix(cell))
     assert recovered == 1
     assert pages[0]["lines"][0]["text"].startswith("11 Mar 11 Mar DUITNOW")
-    assert "41 Mar" not in pages[0]["lines"][0]["text"]
     assert "41 Mar" not in pages[0]["text"]
 
 
-def test_recover_transaction_dates_rejects_when_scales_disagree():
-    # scale 3 reads 14 Mar, scale 4 reads 11 Mar -> not deterministic -> keep as exception
-    def region_ocr(page_no, box, scale=3):
-        return "11 Mar 14 Mar" if scale == 3 else "11 Mar 11 Mar"
-
+def test_recover_transaction_dates_rejects_when_consensus_is_split():
     pages = _date_pages()
-    recovered = ocr_engine.recover_transaction_dates(pages, region_ocr)
+    # 50/50 split between 11 Mar and 14 Mar -> below 75% winner threshold -> reject
+    def cell(dpi, psm):
+        return "11 Mar 11 Mar" if psm in (6, 7) else "11 Mar 14 Mar"
+    recovered = ocr_engine.recover_transaction_dates(pages, lambda page_no, box: _matrix(cell))
     assert recovered == 0
     assert "41 Mar" in pages[0]["lines"][0]["text"]
 
 
-def test_recover_transaction_dates_keeps_row_when_not_deterministically_valid():
-    # still-invalid txn, anchor mismatch, junk, empty -> no change (stays an exception downstream)
-    for crop in ("11 Mar 41 Mar", "13 Mar 11 Mar", "garbage", ""):
-        pages = _date_pages()
-        recovered = ocr_engine.recover_transaction_dates(
-            pages, lambda page_no, box, scale=3: crop
-        )
-        assert recovered == 0
-        assert "41 Mar" in pages[0]["lines"][0]["text"]
+def test_recover_transaction_dates_rejects_on_anchor_mismatch():
+    pages = _date_pages()
+    # every read's posting date is 13 Mar, not the row's existing 11 Mar -> no anchored reads
+    recovered = ocr_engine.recover_transaction_dates(
+        pages, lambda page_no, box: _matrix("13 Mar 11 Mar")
+    )
+    assert recovered == 0
+    assert "41 Mar" in pages[0]["lines"][0]["text"]
+
+
+def test_recover_transaction_dates_rejects_when_too_few_dpis_support_winner():
+    pages = _date_pages()
+    # only one DPI yields anchored valid reads -> fails DPI-diversity gate
+    def cell(dpi, psm):
+        return "11 Mar 11 Mar" if dpi == 250 else "garbage"
+    recovered = ocr_engine.recover_transaction_dates(pages, lambda page_no, box: _matrix(cell))
+    assert recovered == 0
+    assert "41 Mar" in pages[0]["lines"][0]["text"]
 
 
 def test_recover_transaction_dates_ignores_valid_rows():
@@ -156,7 +175,7 @@ def test_recover_transaction_dates_ignores_valid_rows():
     pages[0]["lines"][0]["words"][2]["text"] = "10"
     calls = []
     recovered = ocr_engine.recover_transaction_dates(
-        pages, lambda page_no, box, scale=3: calls.append(box) or "x"
+        pages, lambda page_no, box: calls.append(box) or _matrix("x")
     )
     assert recovered == 0 and calls == []
 
