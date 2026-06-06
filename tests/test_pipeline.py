@@ -14,12 +14,17 @@ from src.parser_builder import ParserBuildError
 
 def test_detects_all_supported_statement_types():
     assert detect_statement_type("TNG WALLET TRANSACTION HISTORY") == "tng"
+    assert detect_statement_type(
+        "transaction date time transaction type transaction amount "
+        "transaction direction transaction status transaction reference id"
+    ) == "tng"
     assert detect_statement_type("Standard Chartered Credit Card Statement") == "sc"
     assert detect_statement_type("YOUR TRANSACTION DETAILS ESSENTIAL VISA CLASSIC") == "hlb"
 
 
 def test_hlb_uses_text_and_sc_tng_use_ocr():
     assert processing_mode_for("hlb", has_useful_text=True) == "text"
+    assert processing_mode_for("tng", has_useful_text=True) == "text"
     assert processing_mode_for("tng", has_useful_text=False) == "ocr"
     assert processing_mode_for("sc", has_useful_text=False) == "ocr"
 
@@ -40,6 +45,80 @@ def test_export_has_required_sheets(tmp_path: Path):
         "Exceptions",
         "Raw_Extract",
     ]
+
+
+def test_tng_workbook_privacy_respects_unmask_flag(tmp_path: Path, monkeypatch):
+    pdf_path = tmp_path / "tng.pdf"
+    pdf_path.write_bytes(b"placeholder")
+    source_text = (
+        "TNG WALLET TRANSACTION HISTORY\n"
+        "Registered Name: Example Person\n"
+        "Wallet ID: 60123456789\n"
+        "1/6/2025 Success Payment 123456789012 Sample Merchant "
+        "RM10.00 RM90.00"
+    )
+    monkeypatch.setattr(extract, "extract_native_pages", lambda *args: ([], False))
+    monkeypatch.setattr(
+        extract,
+        "ocr_pdf_pages",
+        lambda *args, **kwargs: ([{"text": source_text}], False),
+    )
+    logger = RecordingLogger()
+
+    masked = extract.process_pdf(pdf_path, tmp_path / "cache", None, False, False, logger)
+    unmasked = extract.process_pdf(pdf_path, tmp_path / "cache", None, False, True, logger)
+    masked_path = tmp_path / "masked.xlsx"
+    unmasked_path = tmp_path / "unmasked.xlsx"
+    for path, result in ((masked_path, masked), (unmasked_path, unmasked)):
+        export_workbook(
+            path,
+            result.transactions,
+            result.summaries,
+            result.exceptions,
+            result.raw_extract,
+        )
+
+    masked_book = load_workbook(masked_path, read_only=True, data_only=True)
+    unmasked_book = load_workbook(unmasked_path, read_only=True, data_only=True)
+    masked_headers = [cell.value for cell in next(masked_book["Transactions"].iter_rows())]
+    masked_values = dict(
+        zip(masked_headers, next(masked_book["Transactions"].iter_rows(min_row=2, values_only=True)))
+    )
+    unmasked_headers = [cell.value for cell in next(unmasked_book["Transactions"].iter_rows())]
+    unmasked_values = dict(
+        zip(unmasked_headers, next(unmasked_book["Transactions"].iter_rows(min_row=2, values_only=True)))
+    )
+    masked_summary_headers = [
+        cell.value for cell in next(masked_book["Statement_Summary"].iter_rows())
+    ]
+    masked_summary = dict(
+        zip(
+            masked_summary_headers,
+            next(masked_book["Statement_Summary"].iter_rows(min_row=2, values_only=True)),
+        )
+    )
+    unmasked_summary_headers = [
+        cell.value for cell in next(unmasked_book["Statement_Summary"].iter_rows())
+    ]
+    unmasked_summary = dict(
+        zip(
+            unmasked_summary_headers,
+            next(unmasked_book["Statement_Summary"].iter_rows(min_row=2, values_only=True)),
+        )
+    )
+
+    assert masked_values["account_name_masked"] == "E***** P*****"
+    assert masked_values["account_no_masked"] == "601*****789"
+    assert masked_values["reference"] != "123456789012"
+    assert masked_values["raw_line"] == "[MASKED RAW LINE - use --unmask for local review]"
+    assert unmasked_values["account_name_masked"] == "Example Person"
+    assert unmasked_values["account_no_masked"] == "60123456789"
+    assert unmasked_values["reference"] == "123456789012"
+    assert "123456789012" in unmasked_values["raw_line"]
+    assert masked_summary["account_name_masked"] == "E***** P*****"
+    assert masked_summary["account_no_masked"] == "601*****789"
+    assert unmasked_summary["account_name_masked"] == "Example Person"
+    assert unmasked_summary["account_no_masked"] == "60123456789"
 
 
 def test_parser_builder_dry_run_cli_creates_artifacts_without_workbook(

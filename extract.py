@@ -7,7 +7,14 @@ from pathlib import Path
 
 from src.export_excel import export_workbook
 from src.logging_utils import configure_logging
-from src.ocr_engine import OcrUnavailableError, ocr_pdf_pages
+from src.ocr_engine import (
+    DEFAULT_OCR_DPI,
+    OcrUnavailableError,
+    build_amount_region_ocr,
+    ocr_pdf_pages,
+    recover_amount_column,
+    recover_transaction_dates,
+)
 from src.parser_builder import (
     DEFAULT_PARSER_BUILD_MODEL,
     ParserBuildError,
@@ -17,7 +24,7 @@ from src.parser_builder import (
 )
 from src.parsers.base import ParseResult, add_exception
 from src.parsers.hong_leong import HongLeongParser
-from src.parsers.standard_chartered import StandardCharteredParser
+from src.parsers.standard_chartered import StandardCharteredParser, select_sc_fallback_rows
 from src.parsers.tng_ewallet import TngEwalletParser
 from src.pdf_detect import detect_statement_type, processing_mode_for
 from src.privacy import apply_privacy
@@ -31,6 +38,10 @@ PARSERS = {
     "sc": StandardCharteredParser,
     "hlb": HongLeongParser,
 }
+# Standard Chartered scans need a higher OCR resolution than the default so the
+# rightmost RM Amount column is captured on wrapped rows. TNG keeps the default
+# DPI (and its existing cache) so its verified results are preserved.
+OCR_DPI_BY_TYPE = {"sc": 350}
 
 
 def parse_args() -> argparse.Namespace:
@@ -52,7 +63,11 @@ def parse_args() -> argparse.Namespace:
         default=Path("output/parser_build"),
     )
     parser.add_argument("--force-parser-build", action="store_true")
-    parser.add_argument("--unmask", action="store_true", help="Include private values for local private use.")
+    parser.add_argument(
+        "--unmask",
+        action="store_true",
+        help="Include all source-available private values for local private use.",
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
     if not parser_build_requested(args) and args.output is None:
@@ -117,9 +132,27 @@ def process_pdf(
         extraction_text = native_text
         cache_hit = native_cached
     else:
-        ocr_pages, cache_hit = ocr_pdf_pages(pdf_path, cache_root, force)
+        ocr_dpi = OCR_DPI_BY_TYPE.get(statement_type, DEFAULT_OCR_DPI)
+        ocr_pages, cache_hit = ocr_pdf_pages(pdf_path, cache_root, force, dpi=ocr_dpi)
+        if statement_type == "sc":
+            # Recover values the full-page pass dropped/garbled on wrapped rows by
+            # re-OCRing just the affected cell. Both passes touch only deficient
+            # rows; every other row is left exactly as the main pass produced.
+            region_ocr = build_amount_region_ocr(pdf_path, ocr_dpi)
+            recover_amount_column(ocr_pages, region_ocr)
+            recover_transaction_dates(ocr_pages, region_ocr)
         extraction_text = _join_ocr_pages(ocr_pages)
     result = parser.parse_text(extraction_text, pdf_path.name)
+    if statement_type == "sc":
+        # 250-dpi fallback: add only rows the 350 pass lost and that pass every
+        # safety gate in select_sc_fallback_rows (no duplicates, no churn twins).
+        fallback_pages, _ = ocr_pdf_pages(pdf_path, cache_root, force, dpi=DEFAULT_OCR_DPI)
+        fallback_result = parser.parse_text(_join_ocr_pages(fallback_pages), pdf_path.name)
+        recovered = select_sc_fallback_rows(result.transactions, fallback_result.transactions)
+        if recovered:
+            result.transactions.extend(recovered)
+            for summary in result.summaries:
+                summary["transaction_count"] = len(result.transactions)
     result.processing_mode = mode
     for summary in result.summaries:
         summary["processing_mode"] = mode

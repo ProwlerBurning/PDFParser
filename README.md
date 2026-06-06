@@ -51,7 +51,24 @@ Force a statement type:
 ```
 
 Use `--force` to discard cached extraction artifacts. Cache data is stored by
-PDF SHA-256 under `cache/`.
+PDF SHA-256 under `cache/`. OCR cache files are keyed by DPI, so different
+resolutions never overwrite each other.
+
+## Provider Notes
+
+- **Touch 'n Go**: monthly scans are read via local OCR; the alternate
+  Jan 2024–May 2025 export is read via native text.
+- **Standard Chartered**: scanned statements are OCR'd at a higher resolution
+  so the rightmost RM Amount column is captured on wrapped rows. Amounts may
+  appear before or after the reference id, may use a comma decimal
+  (`54,52`), and reference ids split across spaces are rejoined. A small number
+  of rows whose amount cell is genuinely unreadable in the source scan are kept
+  in `Exceptions` rather than guessed.
+- **Hong Leong Bank**: first-page summary metadata is laid out as a column
+  table, so statement date, payment due date, combined credit limit, card
+  number, card type, current balance, and minimum payment are read from their
+  labels and the positional data row; previous and total balances come from the
+  transaction pages. Missing fields are left blank, never inferred.
 
 ## Optional Parser Builder
 
@@ -110,8 +127,12 @@ balance-validation mismatches. One bad document does not stop a folder run.
 Names, wallet IDs, and card numbers are masked by default. Card numbers retain
 the first and last four digits; wallet IDs retain the first and last three.
 Raw lines are suppressed in masked workbooks because they may contain names or
-addresses. Use `--unmask` only on a private local machine when full audit text
-is required. Logs never include extracted identity or account values.
+addresses. Use `--unmask` only on a private local machine when all
+source-available private values and full audit text are required. The existing
+`*_masked` column names are retained for workbook compatibility, but contain
+source values in unmasked mode. Values already masked or absent in the source
+cannot be reconstructed. Logs never include extracted identity or account
+values.
 
 ## Add A Future Bank
 
