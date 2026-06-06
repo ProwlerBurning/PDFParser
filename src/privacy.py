@@ -9,14 +9,22 @@ def _digits(value: str | None) -> str:
 
 
 def mask_card_number(value: str | None) -> str:
-    digits = _digits(value)
+    source = value or ""
+    edge_match = re.search(r"(?<!\d)(\d{4})[0-9Xx* -]*(\d{4})(?!\d)", source)
+    if edge_match and re.search(r"[Xx*]", source):
+        return f"{edge_match.group(1)}********{edge_match.group(2)}"
+    digits = _digits(source)
     if len(digits) <= 8:
         return "*" * len(digits)
     return f"{digits[:4]}{'*' * (len(digits) - 8)}{digits[-4:]}"
 
 
 def mask_wallet_id(value: str | None) -> str:
-    digits = _digits(value)
+    source = value or ""
+    edge_match = re.fullmatch(r"\D*(\d{3})[0-9* -]*(\d{3})\D*", source)
+    if edge_match and len(_digits(source)) >= 6:
+        return f"{edge_match.group(1)}*****{edge_match.group(2)}"
+    digits = _digits(source)
     if len(digits) <= 6:
         return "*" * len(digits)
     return f"{digits[:3]}{'*' * (len(digits) - 6)}{digits[-3:]}"

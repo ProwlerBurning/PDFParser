@@ -18,7 +18,7 @@ AMOUNT_END_RE = re.compile(
     r"(?:(?P<foreign>\d[\d,]*\.\d{2})\s+)?(?P<rm>\d[\d,]*\.\d{2})(?:\s+(?P<cr>CR))?",
     re.I,
 )
-CARD_NUMBER_RE = re.compile(r"(?:\d[ -]?){12,19}")
+CARD_NUMBER_RE = re.compile(r"(?:[0-9X*][ -]?){12,19}", re.I)
 IGNORE_MARKERS = (
     "CREDIT CARD IMPORTANT INFORMATION",
     "MAKLUMAT PENTING KAD KREDIT",
@@ -46,7 +46,7 @@ class StandardCharteredParser:
                 current_card_number = None
                 continue
             if kind == "card_number":
-                current_card_number = re.sub(r"\D", "", value)
+                current_card_number = self._normalize_card_identity(value)
                 continue
             raw_line = value
             result.raw_extract.append(
@@ -95,6 +95,10 @@ class StandardCharteredParser:
         if not result.transactions:
             add_exception(result, source_file, self.provider, "No Standard Chartered transactions parsed")
         return result
+
+    @staticmethod
+    def _normalize_card_identity(value: str) -> str:
+        return re.sub(r"[^0-9X*]", "", value.upper())
 
     @staticmethod
     def _metadata(lines: list[str], pattern: str) -> str | None:

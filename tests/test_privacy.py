@@ -23,3 +23,25 @@ def test_masks_long_identifiers_in_transaction_text():
     assert result.transactions[0]["details"] == (
         "Wallet 601*****789 token AB1234*******2345 and 1234**************9012"
     )
+
+
+def test_apply_privacy_preserves_card_edges_instead_of_double_masking():
+    result = ParseResult(
+        transactions=[
+            transaction_row(
+                card_no_masked="4293199008613752",
+                account_no_masked="60123456789",
+                raw_line="private",
+            )
+        ]
+    )
+
+    apply_privacy(result)
+    apply_privacy(result)
+
+    assert result.transactions[0]["card_no_masked"] == "4293********3752"
+    assert result.transactions[0]["account_no_masked"] == "601*****789"
+
+
+def test_mask_card_number_preserves_existing_masked_card_identity():
+    assert mask_card_number("4032-XXX-XXXX-8311") == "4032********8311"
