@@ -75,17 +75,21 @@ def main(argv: list[str] | None = None) -> int:
     summaries = []
     exceptions = []
     raw_extract = []
-    cache_root = PROJECT_ROOT / "cache"
     logger = SilentLogger()
-    for path in args.pdfs:
-        result = process_pdf(path, cache_root, None, False, False, logger)
-        transactions.extend(result.transactions)
-        summaries.extend(result.summaries)
-        exceptions.extend(result.exceptions)
-        raw_extract.extend(result.raw_extract)
 
     with tempfile.TemporaryDirectory(prefix="statement-parser-verify-") as directory:
-        workbook_path = Path(directory) / "statements.xlsx"
+        # Keep the cache and the workbook inside the temporary directory so this
+        # helper never writes permanent cache or output artifacts.
+        temp_root = Path(directory)
+        cache_root = temp_root / "cache"
+        workbook_path = temp_root / "statements.xlsx"
+        for path in args.pdfs:
+            result = process_pdf(path, cache_root, None, False, False, logger)
+            transactions.extend(result.transactions)
+            summaries.extend(result.summaries)
+            exceptions.extend(result.exceptions)
+            raw_extract.extend(result.raw_extract)
+
         export_workbook(
             workbook_path,
             transactions,
