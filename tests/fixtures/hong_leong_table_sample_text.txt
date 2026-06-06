@@ -1,0 +1,26 @@
+HONG LEONG BANK
+stno-q1-00000000-0-X
+Statement Date
+14 DEC 2025
+Tarikh Penyata
+TEST CARDHOLDER NAME
+P1-00-00 Payment Due Date
+03 JAN 2026
+Bayar Sebelum
+JALAN TEST 1/1
+TEST RESIDENCE COURT 7
+Combine Credit Limit (RM)
+40000 TEST CITY Had Kredit Gabungan (RM) 30,000.00
+Credit Card Number Credit Limit Card Type Current Balance Overdue/Limit Minimum Payment
+Nombor Kad Kredit Had Kredit Jenis Kad Jumlah Terkini Tunggakan/Lebih-Had Bayaran Minimum
+(RM) (RM) (RM) [A] (RM) [B]
+4000 1234 5678 9010 30,000.00 ESSENTIAL VISA CLASSIC 29,949.91 0.00 1,497.50
+TOTAL Minimum Payment
+Total Current Balance
+Jumlah Terkini 29,949.91 Jumlah Bayaran Minimum 1,497.50
+YOUR TRANSACTION DETAILS / TRANSAKSI TERPERINCI ANDA
+ESSENTIAL VISA CLASSIC - 4000 1234 5678 9010
+PREVIOUS BALANCE FROM LAST STATEMENT 28,000.00
+17 DEC 17 DEC TEST MERCHANT ONE 50.00
+SUB TOTAL 29,949.91
+TOTAL BALANCE 29,949.91

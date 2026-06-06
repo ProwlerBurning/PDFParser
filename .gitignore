@@ -8,6 +8,8 @@ cache/
 output/*
 !output/.gitkeep
 sample_input/
+input_pdfs/
+review_bundle/
 
 *.pdf
 *.xlsx

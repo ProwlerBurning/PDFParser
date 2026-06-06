@@ -6,8 +6,8 @@ Local, deterministic PDF-to-Excel extraction for three statement formats:
 - Standard Chartered credit card statement
 - Hong Leong Bank credit card statement
 
-No LLM, cloud OCR, or online AI service is used. Extraction uses pdfplumber,
-PyMuPDF, and local Tesseract OCR.
+Normal extraction uses no LLM, cloud OCR, or online AI service. Extraction
+uses pdfplumber, PyMuPDF, and local Tesseract OCR.
 
 ## Installation
 
@@ -51,7 +51,70 @@ Force a statement type:
 ```
 
 Use `--force` to discard cached extraction artifacts. Cache data is stored by
-PDF SHA-256 under `cache/`.
+PDF SHA-256 under `cache/`. OCR cache files are keyed by DPI, so different
+resolutions never overwrite each other.
+
+## Provider Notes
+
+- **Touch 'n Go**: monthly scans are read via local OCR; the alternate
+  Jan 2024–May 2025 export is read via native text.
+- **Standard Chartered**: scanned statements are OCR'd at a higher resolution
+  so the rightmost RM Amount column is captured on wrapped rows. Amounts may
+  appear before or after the reference id, may use a comma decimal
+  (`54,52`), and reference ids split across spaces are rejoined. A small number
+  of rows whose amount cell is genuinely unreadable in the source scan are kept
+  in `Exceptions` rather than guessed.
+- **Hong Leong Bank**: first-page summary metadata is laid out as a column
+  table, so statement date, payment due date, combined credit limit, card
+  number, card type, current balance, and minimum payment are read from their
+  labels and the positional data row; previous and total balances come from the
+  transaction pages. Missing fields are left blank, never inferred.
+
+## Optional Parser Builder
+
+Parser Builder Mode can create a reviewable development packet for an unknown
+statement format. It does not extract transactions, write Excel rows, or
+install generated parser code. Native text extraction and OCR happen locally,
+and only sanitized text is included in the prompt.
+
+Dry-run creates the sanitized prompt and metadata without calling OpenRouter or
+requiring an API key:
+
+```bash
+.venv/bin/python extract.py \
+  --input "/path/to/unknown.pdf" \
+  --parser-build-dry-run
+```
+
+Review the prompt under `output/parser_build/`. To request an OpenRouter
+development packet:
+
+```bash
+export OPENROUTER_API_KEY="your-private-key"
+.venv/bin/python extract.py \
+  --input "/path/to/unknown.pdf" \
+  --parser-build openrouter
+```
+
+Options:
+
+- `--parser-build-model MODEL` selects the OpenRouter model. The default can
+  also be configured with `OPENROUTER_PARSER_BUILD_MODEL`.
+- `--parser-build-max-pages 5` limits the sanitized statement pages included.
+- `--parser-build-output output/parser_build` changes the artifact directory.
+- `--force` allows existing prompt, metadata, response, and index artifacts to
+  be overwritten.
+- `--force-parser-build` permits review artifacts for an already-supported
+  format. Without it, supported formats fail clearly.
+
+Parser Builder Mode currently calls OpenRouter's chat completions endpoint
+using `OPENROUTER_API_KEY`. OpenRouter is contacted only by
+`--parser-build openrouter`. The key is never written to artifacts, logs,
+workbooks, caches, or exceptions. The original PDF is never uploaded.
+
+For folder input, Parser Builder writes one prompt and metadata file per PDF,
+plus `index.json`. Real mode also writes one `.llm_response.md` file per PDF.
+All output is review-only; no files are written into `src/parsers/`.
 
 ## Review Exceptions
 
@@ -64,8 +127,12 @@ balance-validation mismatches. One bad document does not stop a folder run.
 Names, wallet IDs, and card numbers are masked by default. Card numbers retain
 the first and last four digits; wallet IDs retain the first and last three.
 Raw lines are suppressed in masked workbooks because they may contain names or
-addresses. Use `--unmask` only on a private local machine when full audit text
-is required. Logs never include extracted identity or account values.
+addresses. Use `--unmask` only on a private local machine when all
+source-available private values and full audit text are required. The existing
+`*_masked` column names are retained for workbook compatibility, but contain
+source values in unmasked mode. Values already masked or absent in the source
+cannot be reconstructed. Logs never include extracted identity or account
+values.
 
 ## Add A Future Bank
 
@@ -83,3 +150,18 @@ explicit Python so parsing behavior is reviewable and testable.
 ```bash
 .venv/bin/pytest
 ```
+
+To verify private local samples without committing them, pass the PDF paths
+explicitly as positional arguments:
+
+```bash
+.venv/bin/python scripts/verify_private_samples.py \
+  "/path/to/tng_statement.pdf" \
+  "/path/to/sc_statement.pdf" \
+  "/path/to/hlb_statement.pdf"
+```
+
+Run with no arguments to print usage. The helper writes both its OCR cache and
+its workbook inside a temporary directory only (nothing permanent is written and
+nothing is uploaded), and prints provider counts, exception counts, processing
+modes, and the masked-output privacy scan result.
