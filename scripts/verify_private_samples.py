@@ -1,6 +1,19 @@
 #!/usr/bin/env python3
+"""Locally verify extraction + privacy masking for PDF statements you supply.
+
+Pass one or more PDF paths as positional arguments. Nothing is written
+permanently, nothing is uploaded, and no online/LLM service is contacted: each
+PDF is processed by the normal local deterministic pipeline, exported to a
+temporary workbook, checked for the required sheets, and scanned for leaked
+long digit runs. Provider/exception counts, processing modes, and the privacy
+scan result are printed.
+
+Usage:
+    python scripts/verify_private_samples.py STATEMENT.pdf [MORE.pdf ...]
+"""
 from __future__ import annotations
 
+import argparse
 import re
 import sys
 import tempfile
@@ -17,11 +30,6 @@ from extract import process_pdf
 from src.export_excel import export_workbook
 
 
-SAMPLES = [
-    Path.home() / "Downloads" / "tng_ewallet_transactions_20250601_20250630.pdf",
-    Path.home() / "Downloads" / "SC statement 202501 Jan.pdf",
-    Path.home() / "Downloads" / "ESSENTIAL VISA CLASSIC 012025.pdf",
-]
 REQUIRED_SHEETS = [
     "Transactions",
     "Statement_Summary",
@@ -35,9 +43,32 @@ class SilentLogger:
         pass
 
 
-def main() -> int:
-    missing = [path for path in SAMPLES if not path.is_file()]
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Locally verify extraction and privacy masking for the PDF "
+        "statements you pass in. No files are written permanently and no "
+        "online/LLM service is contacted.",
+    )
+    parser.add_argument(
+        "pdfs",
+        nargs="*",
+        type=Path,
+        metavar="PDF",
+        help="One or more PDF statement paths to verify locally.",
+    )
+    args = parser.parse_args(argv)
+    if not args.pdfs:
+        parser.print_usage(sys.stderr)
+        parser.exit(2, "error: provide at least one PDF path to verify\n")
+    return args
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    missing = [path for path in args.pdfs if not path.is_file()]
     if missing:
+        for path in missing:
+            print(f"error: not a file: {path}", file=sys.stderr)
         return 2
 
     transactions = []
@@ -46,7 +77,7 @@ def main() -> int:
     raw_extract = []
     cache_root = PROJECT_ROOT / "cache"
     logger = SilentLogger()
-    for path in SAMPLES:
+    for path in args.pdfs:
         result = process_pdf(path, cache_root, None, False, False, logger)
         transactions.extend(result.transactions)
         summaries.extend(result.summaries)
@@ -64,6 +95,11 @@ def main() -> int:
         )
         workbook = load_workbook(workbook_path, read_only=True, data_only=True)
         if workbook.sheetnames != REQUIRED_SHEETS:
+            print(
+                f"error: unexpected sheets {workbook.sheetnames}, "
+                f"expected {REQUIRED_SHEETS}",
+                file=sys.stderr,
+            )
             return 3
         privacy_passed = not any(
             isinstance(cell.value, str) and re.search(r"\d{9,}", cell.value)
@@ -80,7 +116,7 @@ def main() -> int:
             f"provider={provider} "
             f"transactions={transaction_counts[provider]} "
             f"exceptions={exception_counts[provider]} "
-            f"mode={modes[provider]}"
+            f"mode={modes.get(provider)}"
         )
     print(f"privacy_scan={'pass' if privacy_passed else 'fail'}")
     return 0 if privacy_passed else 4
