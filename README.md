@@ -151,13 +151,17 @@ explicit Python so parsing behavior is reviewable and testable.
 .venv/bin/pytest
 ```
 
-When the three private samples are present in `~/Downloads`, run the local
-integration verifier:
+To verify private local samples without committing them, pass the PDF paths
+explicitly as positional arguments:
 
 ```bash
-.venv/bin/python scripts/verify_private_samples.py
+.venv/bin/python scripts/verify_private_samples.py \
+  "/path/to/tng_statement.pdf" \
+  "/path/to/sc_statement.pdf" \
+  "/path/to/hlb_statement.pdf"
 ```
 
-It creates its workbook in a temporary directory and prints only provider
-counts, exception counts, processing modes, and the masked-output privacy scan
-result.
+Run with no arguments to print usage. The helper writes both its OCR cache and
+its workbook inside a temporary directory only (nothing permanent is written and
+nothing is uploaded), and prints provider counts, exception counts, processing
+modes, and the masked-output privacy scan result.
