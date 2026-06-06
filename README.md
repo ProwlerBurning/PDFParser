@@ -165,3 +165,14 @@ Run with no arguments to print usage. The helper writes both its OCR cache and
 its workbook inside a temporary directory only (nothing permanent is written and
 nothing is uploaded), and prints provider counts, exception counts, processing
 modes, and the masked-output privacy scan result.
+
+## Project governance and safety
+
+This project is privacy-first and local by default. See:
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — local setup, checks, and contribution rules.
+- [SECURITY.md](SECURITY.md) — security reporting and what never to attach.
+- [SUPPORT.md](SUPPORT.md) — how to get help (synthetic/redacted data only).
+- [docs/PRIVACY_MODEL.md](docs/PRIVACY_MODEL.md) — local-first, masked-by-default design.
+- [docs/SUPPORTED_PROVIDERS.md](docs/SUPPORTED_PROVIDERS.md) — supported statement formats.
+- [docs/ROADMAP.md](docs/ROADMAP.md) — direction and explicit non-goals.

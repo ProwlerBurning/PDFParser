@@ -1,0 +1,36 @@
+name: repository-safety
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tracked-file-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Fail on unsafe tracked files
+        run: |
+          bad=0
+          # Only inspect tracked files; never scan local untracked files.
+          for f in $(git ls-files); do
+            case "$f" in
+              *.pdf|*.xlsx|cache/*|input_pdfs/*|review_bundle/*)
+                echo "UNSAFE TRACKED FILE: $f"
+                bad=1
+                ;;
+              output/*)
+                if [ "$f" != "output/.gitkeep" ]; then
+                  echo "UNSAFE TRACKED FILE: $f"
+                  bad=1
+                fi
+                ;;
+            esac
+          done
+          if [ "$bad" -ne 0 ]; then
+            echo "::error::Unsafe files are tracked in the repository. Remove them before merging."
+            exit 1
+          fi
+          echo "No unsafe tracked files found."
