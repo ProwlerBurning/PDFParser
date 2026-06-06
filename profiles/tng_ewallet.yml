@@ -1,0 +1,10 @@
+id: tng
+provider: Touch 'n Go eWallet
+detection:
+  - TNG WALLET TRANSACTION HISTORY
+  - Touch n Go eWallet
+processing_mode: ocr
+ocr:
+  dpi: 250
+  psm: 6
+date_pattern: '^\d{1,2}/\d{1,2}/\d{4}\b'

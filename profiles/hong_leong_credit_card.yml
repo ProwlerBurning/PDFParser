@@ -1,0 +1,8 @@
+id: hlb
+provider: Hong Leong Bank
+detection:
+  - Hong Leong Bank
+  - YOUR TRANSACTION DETAILS
+  - ESSENTIAL VISA CLASSIC
+processing_mode: text
+transaction_heading: YOUR TRANSACTION DETAILS / TRANSAKSI TERPERINCI ANDA

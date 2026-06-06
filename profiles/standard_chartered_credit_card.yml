@@ -1,0 +1,15 @@
+id: sc
+provider: Standard Chartered
+detection:
+  - Standard Chartered
+  - Credit Card Statement
+  - Penyata Kad Anda
+processing_mode: ocr
+ocr:
+  dpi: 250
+  psm: 6
+card_sections:
+  - VISA PLATINUM
+  - VISA REWARDS PLATINUM
+  - SIMPLY CASH CREDIT CARD
+  - MPS FLEXPAY

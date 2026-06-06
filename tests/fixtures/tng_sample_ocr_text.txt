@@ -1,0 +1,12 @@
+TNG WALLET TRANSACTION HISTORY
+Registered Name: Example Person
+Wallet ID: 60123456789
+Account Status: Active
+Transaction Period: 01/06/2025 - 30/06/2025
+Date Status Transaction Type Reference Description Details Amount (RM) Wallet Balance
+1/6/2025 Successful Payment REF-001 Merchant payment Grocery Store 10.00 90.00
+2/6/2025 Successful DUITNOW_RECEIVEFROM REF-002 Transfer from
+Sample Bank Incoming transfer 20.00 110.00
+3/6/2025 Successful Payment REF-003-A
+REF-003-B Merchant payment Lunch and drinks 5.00 105.00
+This is a system generated email. No signature is required.
